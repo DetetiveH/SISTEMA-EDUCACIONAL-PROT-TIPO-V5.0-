@@ -28,6 +28,7 @@ COR_FUNDO = "#2e2e2e"
 COR_FUNDO_FRAME = "#3e3e3e"
 COR_TEXTO = "#ffffff"
 COR_DESTAQUE = "#007acc"
+COR_DESTAQUE_HOVER = "#0099ff" # Cor para o efeito hover
 COR_BOTAO = "#5a5a5a"
 FONTE_TITULO = ("Arial", 18, "bold")
 FONTE_NORMAL = ("Arial", 10)
@@ -40,7 +41,7 @@ class ClienteServidor:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((HOST, PORTA))
                 s.sendall(comando.encode('utf-8'))
-                resposta = s.recv(4096).decode('utf-8')
+                resposta = s.recv(8192).decode('utf-8') # Aumentado o buffer de recebimento
                 return resposta
         except ConnectionRefusedError:
             messagebox.showerror("Erro de Conexão", f"Não foi possível conectar ao servidor em {HOST}:{PORTA}.\nVerifique se o programa em C (servidor) está em execução.")
@@ -138,6 +139,20 @@ def autorizar_usuario_local(usuario_para_autorizar):
         for u in usuarios:
             f.write(f"{';'.join(u)}\n")
     return True
+    
+# --- Classes Auxiliares ---
+class HoverButton(ttk.Button):
+    """Botão com efeito de hover."""
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+
+    def on_enter(self, event):
+        self.config(style="Hover.TButton")
+
+    def on_leave(self, event):
+        self.config(style="TButton")
 
 # --- Classe Principal da Aplicação ---
 class App(tk.Tk):
@@ -154,6 +169,11 @@ class App(tk.Tk):
         style.configure("TLabel", background=COR_FUNDO_FRAME, foreground=COR_TEXTO, font=FONTE_NORMAL)
         style.configure("TButton", background=COR_BOTAO, foreground=COR_TEXTO, font=FONTE_NORMAL, borderwidth=1, focusthickness=3, focuscolor=COR_DESTAQUE)
         style.map("TButton", background=[('active', COR_DESTAQUE)])
+        
+        # NOVO: Estilo para o botão com hover
+        style.configure("Hover.TButton", background=COR_DESTAQUE_HOVER, foreground=COR_TEXTO, font=FONTE_NORMAL)
+        style.map("Hover.TButton", background=[('active', COR_DESTAQUE)])
+
         style.configure("TEntry", fieldbackground=COR_BOTAO, foreground=COR_TEXTO, insertbackground=COR_TEXTO)
         style.configure("Treeview", background=COR_FUNDO_FRAME, foreground=COR_TEXTO, fieldbackground=COR_FUNDO_FRAME, font=FONTE_NORMAL, rowheight=25)
         style.map("Treeview", background=[('selected', COR_DESTAQUE)])
@@ -210,7 +230,7 @@ class TelaLogin(tk.Frame):
         self.senha_entry = ttk.Entry(frame_login, show="*", width=30, font=FONTE_NORMAL)
         self.senha_entry.grid(row=1, column=1, pady=5, padx=10)
         
-        ttk.Button(main_frame, text="Entrar", command=self.fazer_login, style="TButton", padding=10).pack(pady=20)
+        HoverButton(main_frame, text="Entrar", command=self.fazer_login, style="TButton", padding=10).pack(pady=20)
         
     def fazer_login(self):
         usuario = self.usuario_entry.get()
@@ -257,20 +277,23 @@ class PainelAdmin(tk.Frame):
         frame_gestao_academica = ttk.Frame(notebook)
         frame_gestao_usuarios = ttk.Frame(notebook)
         frame_visualizacao = ttk.Frame(notebook)
+        frame_financeiro = ttk.Frame(notebook) # NOVA ABA
         frame_sistema = ttk.Frame(notebook)
 
         notebook.add(frame_dashboard, text="Dashboard")
         notebook.add(frame_gestao_academica, text="Gestão Acadêmica")
         notebook.add(frame_gestao_usuarios, text="Gestão de Usuários")
         notebook.add(frame_visualizacao, text="Visualizar Dados")
+        notebook.add(frame_financeiro, text="Financeiro") # NOVA ABA
         notebook.add(frame_sistema, text="Sistema")
 
-        tk.Button(self, text="Logout", command=lambda: self.controller.trocar_frame(TelaLogin), bg=COR_BOTAO, fg=COR_TEXTO, font=FONTE_NORMAL).pack(pady=10)
+        HoverButton(self, text="Logout", command=lambda: self.controller.trocar_frame(TelaLogin)).pack(pady=10)
         
         self.criar_tela_dashboard(frame_dashboard)
         self.criar_tela_gestao_academica(frame_gestao_academica)
         self.criar_tela_gestao_usuarios(frame_gestao_usuarios)
         self.criar_tela_visualizar_dados(frame_visualizacao)
+        self.criar_tela_financeiro(frame_financeiro) # NOVA ABA
         self.criar_tela_sistema(frame_sistema)
 
         notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
@@ -306,7 +329,7 @@ class PainelAdmin(tk.Frame):
         self.lbl_total_turmas = ttk.Label(frame_stats, text="Total de Turmas: ...", font=("Arial", 12))
         self.lbl_total_turmas.pack(pady=5, anchor="w", padx=10)
         
-        ttk.Button(frame_stats, text="Atualizar Estatísticas", command=self.atualizar_dashboard).pack(pady=10)
+        HoverButton(frame_stats, text="Atualizar Estatísticas", command=self.atualizar_dashboard).pack(pady=10)
         
         self.frame_grafico = ttk.LabelFrame(parent, text="Alunos por Turma")
         self.frame_grafico.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
@@ -376,7 +399,7 @@ class PainelAdmin(tk.Frame):
         frame_professores = ttk.Frame(notebook)
         frame_autorizacoes = ttk.Frame(notebook)
 
-        notebook.add(frame_professores, text="Gerenciar Professores")
+        notebook.add(frame_professores, text="Gerenciar Usuários")
         notebook.add(frame_autorizacoes, text="Autorizações Pendentes")
         
         self.criar_tela_usuarios(frame_professores)
@@ -390,16 +413,19 @@ class PainelAdmin(tk.Frame):
         frame_ver_atividades = ttk.Frame(notebook)
         frame_ver_notas = ttk.Frame(notebook)
         frame_ver_diarios = ttk.Frame(notebook)
+        frame_ver_frequencia = ttk.Frame(notebook) # NOVA ABA
 
         notebook.add(frame_ver_alunos, text="Alunos")
         notebook.add(frame_ver_atividades, text="Atividades")
         notebook.add(frame_ver_notas, text="Notas")
         notebook.add(frame_ver_diarios, text="Diários")
+        notebook.add(frame_ver_frequencia, text="Frequência") # NOVA ABA
 
         self.criar_tela_visualizar_alunos(frame_ver_alunos)
         self.criar_tela_visualizar_atividades(frame_ver_atividades)
         self.criar_tela_visualizar_notas(frame_ver_notas)
         self.criar_tela_visualizar_diarios(frame_ver_diarios)
+        self.criar_tela_visualizar_frequencia(frame_ver_frequencia) # NOVA ABA
 
     def criar_tela_sistema(self, parent):
         notebook = ttk.Notebook(parent)
@@ -413,7 +439,7 @@ class PainelAdmin(tk.Frame):
         
         self.criar_tela_ferramentas(frame_ferramentas)
         self.criar_tela_log(frame_log)
-
+        
     def criar_tela_autorizacoes(self, parent):
         ttk.Label(parent, text="Alunos aguardando autorização para acessar o sistema.").pack(pady=10)
         
@@ -427,8 +453,8 @@ class PainelAdmin(tk.Frame):
         btn_frame = ttk.Frame(list_frame)
         btn_frame.pack(side="left", padx=10)
         
-        ttk.Button(btn_frame, text="Autorizar Selecionado", command=self.autorizar_usuario).pack(pady=5)
-        ttk.Button(btn_frame, text="Recusar Selecionado", command=self.recusar_usuario).pack(pady=5)
+        HoverButton(btn_frame, text="Autorizar", command=self.autorizar_usuario).pack(pady=5, fill='x')
+        HoverButton(btn_frame, text="Recusar", command=self.recusar_usuario).pack(pady=5, fill='x')
 
         self.atualizar_lista_autorizacoes()
 
@@ -447,15 +473,7 @@ class PainelAdmin(tk.Frame):
 
         usuario_autorizar = self.tree_autorizacoes.item(selecionado, 'values')[0]
         
-        usuarios = ler_usuarios_local()
-        for u in usuarios:
-            if u[0] == usuario_autorizar:
-                u[3] = "ativo"
-                break
-        
-        with open(ARQUIVO_USUARIOS, "w", encoding="utf-8") as f:
-            for u in usuarios:
-                f.write(f"{';'.join(u)}\n")
+        autorizar_usuario_local(usuario_autorizar)
         
         self.controller.cliente.enviar_comando(f"LOG;Admin autorizou o acesso do aluno: {usuario_autorizar}")
         messagebox.showinfo("Sucesso", f"Usuário '{usuario_autorizar}' foi autorizado com sucesso.")
@@ -487,17 +505,36 @@ class PainelAdmin(tk.Frame):
         self.senha_entry = ttk.Entry(form, show="*")
         self.senha_entry.grid(row=1, column=1, padx=5, pady=5)
         
-        ttk.Button(form, text="Registrar Professor", command=self.registrar_usuario).grid(row=2, columnspan=2, pady=10)
+        HoverButton(form, text="Registrar Professor", command=self.registrar_usuario).grid(row=2, columnspan=2, pady=10)
 
         list_frame = ttk.LabelFrame(parent, text="Usuários Registrados (Ativos)")
         list_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+        btn_frame = ttk.Frame(list_frame)
+        btn_frame.pack(pady=5)
+        HoverButton(btn_frame, text="Ver Perfil", command=self.ver_perfil_usuario).pack(side='left', padx=5)
+        HoverButton(btn_frame, text="Excluir Usuário", command=self.excluir_usuario).pack(side='left', padx=5)
         
         self.tree_usuarios = ttk.Treeview(list_frame, columns=("Usuário", "Perfil"), show="headings")
         self.tree_usuarios.heading("Usuário", text="Usuário"); self.tree_usuarios.heading("Perfil", text="Perfil")
         self.tree_usuarios.pack(fill="both", expand=True)
-        ttk.Button(list_frame, text="Excluir Usuário Selecionado", command=self.excluir_usuario).pack(pady=5)
 
         self.atualizar_lista_usuarios()
+
+    def ver_perfil_usuario(self):
+        selecionado = self.tree_usuarios.focus()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um usuário para ver o perfil.")
+            return
+        
+        usuario_ver = self.tree_usuarios.item(selecionado, 'values')[0]
+        
+        # Encontra todos os dados do usuário no arquivo local
+        todos_usuarios = ler_usuarios_local()
+        dados_usuario = next((u for u in todos_usuarios if u[0] == usuario_ver), None)
+
+        if dados_usuario:
+            PerfilUsuarioDialog(self, dados_usuario=dados_usuario)
 
     def registrar_usuario(self):
         sucesso, msg = registrar_usuario_local(self.usuario_entry.get(), self.senha_entry.get(), "Professor")
@@ -514,7 +551,7 @@ class PainelAdmin(tk.Frame):
         self.tree_usuarios.delete(*self.tree_usuarios.get_children())
         usuarios = ler_usuarios_local()
         for u in usuarios:
-            if len(u) == 4 and u[3] == 'ativo':
+            if len(u) >= 4 and u[3] == 'ativo':
                 self.tree_usuarios.insert("", "end", values=(u[0], u[2]))
             
     def excluir_usuario(self):
@@ -540,14 +577,14 @@ class PainelAdmin(tk.Frame):
         ttk.Label(form, text="Nome do Curso:").pack(side='left', padx=5)
         self.curso_nome_entry = ttk.Entry(form, width=40)
         self.curso_nome_entry.pack(side='left', padx=5, fill='x', expand=True)
-        ttk.Button(form, text="Adicionar", command=self.adicionar_curso).pack(side='left', padx=5)
+        HoverButton(form, text="Adicionar", command=self.adicionar_curso).pack(side='left', padx=5)
 
         list_frame = ttk.LabelFrame(parent, text="Cursos Cadastrados")
         list_frame.pack(pady=10, padx=10, fill='both', expand=True)
         self.tree_cursos = ttk.Treeview(list_frame, columns=("ID", "Nome"), show='headings')
         self.tree_cursos.heading("ID", text="ID"); self.tree_cursos.heading("Nome", text="Nome do Curso")
         self.tree_cursos.pack(fill='both', expand=True)
-        ttk.Button(list_frame, text="Excluir Curso Selecionado", command=self.excluir_curso).pack(pady=5)
+        HoverButton(list_frame, text="Excluir Curso Selecionado", command=self.excluir_curso).pack(pady=5)
         self.atualizar_cursos()
 
     def atualizar_cursos(self):
@@ -600,7 +637,7 @@ class PainelAdmin(tk.Frame):
         self.materia_modalidade_combo = ttk.Combobox(form, values=["Online", "Presencial"], state="readonly")
         self.materia_modalidade_combo.grid(row=3, column=1, padx=5, pady=5)
         
-        ttk.Button(form, text="Adicionar", command=self.adicionar_materia).grid(row=4, columnspan=2, pady=10)
+        HoverButton(form, text="Adicionar", command=self.adicionar_materia).grid(row=4, columnspan=2, pady=10)
 
         list_frame = ttk.LabelFrame(parent, text="Matérias Cadastradas")
         list_frame.pack(pady=10, padx=10, fill='both', expand=True)
@@ -616,7 +653,7 @@ class PainelAdmin(tk.Frame):
         if tipo_cursos == "DADOS":
             self.materia_curso_combo['values'] = [f"{c[0]} - {c[1]}" for c in cursos]
         
-        professores = [u[0] for u in ler_usuarios_local() if u[2] == "Professor"]
+        professores = [u[0] for u in ler_usuarios_local() if len(u)>2 and u[2] == "Professor"]
         self.materia_prof_combo['values'] = professores
 
         # Atualiza tabela
@@ -646,8 +683,8 @@ class PainelAdmin(tk.Frame):
     def criar_tela_turmas(self, parent):
         botoes = ttk.Frame(parent)
         botoes.pack(pady=5)
-        ttk.Button(botoes, text="Adicionar Turma", command=self.adicionar_turma).pack(side='left', padx=5)
-        ttk.Button(botoes, text="Excluir Turma", command=self.excluir_turma).pack(side='left', padx=5)
+        HoverButton(botoes, text="Adicionar Turma", command=self.adicionar_turma).pack(side='left', padx=5)
+        HoverButton(botoes, text="Excluir Turma", command=self.excluir_turma).pack(side='left', padx=5)
 
         self.tree_turmas = ttk.Treeview(parent, columns=("ID", "Data", "Professor"), show="headings")
         self.tree_turmas.heading("ID", text="ID"); self.tree_turmas.heading("Data", text="Data da Turma"); self.tree_turmas.heading("Professor", text="Professor Responsável")
@@ -669,7 +706,7 @@ class PainelAdmin(tk.Frame):
             resposta = self.controller.cliente.enviar_comando(f"CADASTRAR_TURMA;{data};{professor}")
             tipo, dados = processar_resposta_servidor(resposta)
             if tipo == "SUCESSO":
-                self.master.cliente.enviar_comando(f"LOG;Admin adicionou a turma de '{data}'")
+                self.controller.cliente.enviar_comando(f"LOG;Admin adicionou a turma de '{data}'")
                 messagebox.showinfo("Sucesso", dados)
             self.atualizar_turmas()
 
@@ -680,7 +717,7 @@ class PainelAdmin(tk.Frame):
             resposta = self.controller.cliente.enviar_comando(f"EXCLUIR_TURMA;{id_turma}")
             tipo, dados = processar_resposta_servidor(resposta)
             if tipo == "SUCESSO":
-                self.master.cliente.enviar_comando(f"LOG;Admin excluiu a turma ID: {id_turma}")
+                self.controller.cliente.enviar_comando(f"LOG;Admin excluiu a turma ID: {id_turma}")
                 messagebox.showinfo("Sucesso", dados)
             self.atualizar_turmas()
 
@@ -691,7 +728,7 @@ class PainelAdmin(tk.Frame):
         for col in ("ID", "Nome", "Idade", "Matricula", "Email", "Turma ID"):
             self.tree_ver_alunos.heading(col, text=col)
         self.tree_ver_alunos.pack(fill="both", expand=True, padx=10, pady=10)
-        ttk.Button(parent, text="Atualizar Lista", command=self.atualizar_visualizacao_alunos).pack(pady=5)
+        HoverButton(parent, text="Atualizar Lista", command=self.atualizar_visualizacao_alunos).pack(pady=5)
         self.atualizar_visualizacao_alunos()
 
     def atualizar_visualizacao_alunos(self):
@@ -707,7 +744,7 @@ class PainelAdmin(tk.Frame):
         self.tree_ver_atividades = ttk.Treeview(parent, columns=("ID", "ID Turma", "Título", "Data"), show="headings")
         for col in ("ID", "ID Turma", "Título", "Data"): self.tree_ver_atividades.heading(col, text=col)
         self.tree_ver_atividades.pack(fill="both", expand=True, padx=10, pady=10)
-        ttk.Button(parent, text="Atualizar", command=self.atualizar_visualizacao_atividades).pack(pady=5)
+        HoverButton(parent, text="Atualizar", command=self.atualizar_visualizacao_atividades).pack(pady=5)
         self.atualizar_visualizacao_atividades()
 
     def atualizar_visualizacao_atividades(self):
@@ -721,7 +758,7 @@ class PainelAdmin(tk.Frame):
         self.tree_ver_notas = ttk.Treeview(parent, columns=("ID Aluno", "ID Matéria", "Tipo", "Nota"), show="headings")
         for col in ("ID Aluno", "ID Matéria", "Tipo", "Nota"): self.tree_ver_notas.heading(col, text=col)
         self.tree_ver_notas.pack(fill="both", expand=True, padx=10, pady=10)
-        ttk.Button(parent, text="Atualizar", command=self.atualizar_visualizacao_notas).pack(pady=5)
+        HoverButton(parent, text="Atualizar", command=self.atualizar_visualizacao_notas).pack(pady=5)
         self.atualizar_visualizacao_notas()
 
     def atualizar_visualizacao_notas(self):
@@ -738,7 +775,7 @@ class PainelAdmin(tk.Frame):
         ttk.Label(control_frame, text="ID da Turma:").pack(side='left')
         self.diario_turma_entry = ttk.Entry(control_frame, width=10)
         self.diario_turma_entry.pack(side='left', padx=5)
-        ttk.Button(control_frame, text="Carregar Diário", command=self.atualizar_visualizacao_diario).pack(side='left')
+        HoverButton(control_frame, text="Carregar Diário", command=self.atualizar_visualizacao_diario).pack(side='left')
 
         self.tree_ver_diario = ttk.Treeview(parent, columns=("Data", "Conteúdo", "Presentes"), show="headings")
         for col in ("Data", "Conteúdo", "Presentes"): self.tree_ver_diario.heading(col, text=col)
@@ -759,15 +796,90 @@ class PainelAdmin(tk.Frame):
                 if len(entrada) == 3:
                     self.tree_ver_diario.insert("", "end", values=entrada)
 
+    # --- NOVAS TELAS ---
+    def criar_tela_visualizar_frequencia(self, parent):
+        ttk.Label(parent, text="Visualizar Registros de Frequência").pack(pady=10)
+        self.tree_ver_frequencia = ttk.Treeview(parent, columns=("ID Turma", "ID Aluno", "Data", "Status"), show="headings")
+        for col in ("ID Turma", "ID Aluno", "Data", "Status"): self.tree_ver_frequencia.heading(col, text=col)
+        self.tree_ver_frequencia.pack(fill="both", expand=True, padx=10, pady=10)
+        HoverButton(parent, text="Atualizar", command=self.atualizar_visualizacao_frequencia).pack(pady=5)
+        self.atualizar_visualizacao_frequencia()
+
+    def atualizar_visualizacao_frequencia(self):
+        self.tree_ver_frequencia.delete(*self.tree_ver_frequencia.get_children())
+        tipo, frequencias = processar_resposta_servidor(self.controller.cliente.enviar_comando("LISTAR_FREQUENCIA;TODOS"))
+        if tipo == "DADOS":
+            for f in frequencias: self.tree_ver_frequencia.insert("", "end", values=f)
+    
+    def criar_tela_financeiro(self, parent):
+        form = ttk.LabelFrame(parent, text="Gerar Mensalidades")
+        form.pack(pady=10, padx=10, fill='x')
+
+        ttk.Label(form, text="Valor Padrão (R$):").pack(side='left', padx=5)
+        self.financeiro_valor_entry = ttk.Entry(form, width=10)
+        self.financeiro_valor_entry.pack(side='left', padx=5)
+        HoverButton(form, text="Gerar Mensalidades do Mês", command=self.gerar_mensalidades).pack(side='left', padx=5)
+
+        list_frame = ttk.LabelFrame(parent, text="Registros Financeiros")
+        list_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+        btn_list_frame = ttk.Frame(list_frame)
+        btn_list_frame.pack(pady=5)
+        HoverButton(btn_list_frame, text="Marcar como Pago", command=self.pagar_mensalidade).pack()
+
+        self.tree_financeiro = ttk.Treeview(list_frame, columns=("ID Aluno", "Ano", "Mês", "Valor", "Status"), show="headings")
+        for col in ("ID Aluno", "Ano", "Mês", "Valor", "Status"): self.tree_financeiro.heading(col, text=col)
+        self.tree_financeiro.pack(fill="both", expand=True)
+        self.atualizar_financeiro()
+
+    def gerar_mensalidades(self):
+        valor = self.financeiro_valor_entry.get()
+        if not valor:
+            messagebox.showwarning("Aviso", "Por favor, insira um valor para a mensalidade.")
+            return
+        
+        if messagebox.askyesno("Confirmar", f"Deseja gerar mensalidades no valor de R${valor} para TODOS os alunos para o mês atual?"):
+            resp = self.controller.cliente.enviar_comando(f"GERAR_MENSALIDADES;{valor}")
+            tipo, dados = processar_resposta_servidor(resp)
+            if tipo == "SUCESSO":
+                messagebox.showinfo("Sucesso", dados)
+                self.log_action("gerou mensalidades")
+                self.atualizar_financeiro()
+
+    def pagar_mensalidade(self):
+        selecionado = self.tree_financeiro.focus()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um registro para marcar como pago.")
+            return
+        
+        item = self.tree_financeiro.item(selecionado, 'values')
+        id_aluno, ano, mes = item[0], item[1], item[2]
+
+        if messagebox.askyesno("Confirmar", f"Deseja marcar a mensalidade de {mes}/{ano} do aluno ID {id_aluno} como paga?"):
+            resp = self.controller.cliente.enviar_comando(f"PAGAR_MENSALIDADE;{id_aluno};{ano};{mes}")
+            tipo, dados = processar_resposta_servidor(resp)
+            if tipo == "SUCESSO":
+                messagebox.showinfo("Sucesso", dados)
+                self.log_action(f"marcou mensalidade de {mes}/{ano} do aluno {id_aluno} como paga")
+                self.atualizar_financeiro()
+
+    def atualizar_financeiro(self):
+        self.tree_financeiro.delete(*self.tree_financeiro.get_children())
+        tipo, registros = processar_resposta_servidor(self.controller.cliente.enviar_comando("LISTAR_FINANCEIRO;TODOS"))
+        if tipo == "DADOS":
+            for r in registros:
+                self.tree_financeiro.insert("", "end", values=r)
+    # --- FIM NOVAS TELAS ---
+
     def criar_tela_ferramentas(self, parent):
         frame = ttk.LabelFrame(parent, text="Operações do Sistema")
         frame.pack(pady=20, padx=20, fill="x")
         
-        ttk.Button(frame, text="Realizar Backup do Servidor", command=self.realizar_backup).pack(pady=10, fill='x')
+        HoverButton(frame, text="Realizar Backup do Servidor", command=self.realizar_backup).pack(pady=10, fill='x')
 
-        ttk.Button(frame, text="Limpar Arquivo de Notas", command=lambda: self.limpar_arquivo("NOTAS")).pack(pady=5, fill='x')
-        ttk.Button(frame, text="Limpar Mural de Avisos", command=lambda: self.limpar_arquivo("MENSAGENS")).pack(pady=5, fill='x')
-        ttk.Button(frame, text="Limpar Log de Atividades", command=lambda: self.limpar_arquivo("LOGS")).pack(pady=5, fill='x')
+        HoverButton(frame, text="Limpar Arquivo de Notas", command=lambda: self.limpar_arquivo("NOTAS")).pack(pady=5, fill='x')
+        HoverButton(frame, text="Limpar Mural de Avisos", command=lambda: self.limpar_arquivo("MENSAGENS")).pack(pady=5, fill='x')
+        HoverButton(frame, text="Limpar Log de Atividades", command=lambda: self.limpar_arquivo("LOGS")).pack(pady=5, fill='x')
     
     def realizar_backup(self):
         if messagebox.askyesno("Confirmar", "Deseja solicitar um backup de todos os dados do servidor? Esta ação não pode ser desfeita."):
@@ -793,7 +905,7 @@ class PainelAdmin(tk.Frame):
         self.tree_log.heading("Ação", text="Ação Registrada")
         self.tree_log.column("Ação", width=600)
         self.tree_log.pack(fill="both", expand=True, padx=10, pady=10)
-        ttk.Button(parent, text="Atualizar Log", command=self.atualizar_logs).pack(pady=5)
+        HoverButton(parent, text="Atualizar Log", command=self.atualizar_logs).pack(pady=5)
         self.atualizar_logs()
 
     def atualizar_logs(self):
@@ -822,20 +934,25 @@ class PainelProfessor(tk.Frame):
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=10, pady=10)
         
-        abas = {"Alunos": self.criar_tela_alunos, "Atividades": self.criar_tela_atividades, "Notas": self.criar_tela_notas, "Mural": self.criar_tela_mural}
+        abas = {"Alunos": self.criar_tela_alunos, 
+                "Atividades": self.criar_tela_atividades, 
+                "Notas": self.criar_tela_notas, 
+                "Frequência": self.criar_tela_frequencia, # NOVA ABA
+                "Mural": self.criar_tela_mural}
+
         for nome, construtor in abas.items():
             frame = ttk.Frame(notebook)
             notebook.add(frame, text=nome)
             construtor(frame)
         
-        tk.Button(self, text="Logout", command=lambda: self.controller.trocar_frame(TelaLogin), bg=COR_BOTAO, fg=COR_TEXTO).pack(pady=5)
+        HoverButton(self, text="Logout", command=lambda: self.controller.trocar_frame(TelaLogin)).pack(pady=5)
         
     def log_action(self, action):
         log_msg = f"LOG;Professor '{self.dados_prof['nome']}' {action}"
         self.controller.cliente.enviar_comando(log_msg)
 
     def criar_tela_alunos(self, parent):
-        ttk.Button(parent, text="Adicionar Aluno", command=self.adicionar_aluno).pack(pady=5)
+        HoverButton(parent, text="Adicionar Aluno", command=self.adicionar_aluno).pack(pady=5)
         self.tree_alunos = ttk.Treeview(parent, columns=("ID", "Nome", "Turma ID"), show="headings")
         self.tree_alunos.heading("ID", text="ID"); self.tree_alunos.heading("Nome", text="Nome"); self.tree_alunos.heading("Turma ID", text="Turma ID")
         self.tree_alunos.pack(fill="both", expand=True)
@@ -872,16 +989,19 @@ class PainelProfessor(tk.Frame):
     def criar_tela_atividades(self, parent):
         form = ttk.LabelFrame(parent, text="Nova Atividade")
         form.pack(fill='x', pady=5)
-        ttk.Label(form, text="ID Turma:").grid(row=0, column=0)
-        self.ativ_id_turma_entry = ttk.Entry(form)
-        self.ativ_id_turma_entry.grid(row=0, column=1)
-        ttk.Label(form, text="Título:").grid(row=1, column=0)
+        ttk.Label(form, text="Turma:").grid(row=0, column=0, sticky='w')
+        self.ativ_turma_combo = ttk.Combobox(form, state="readonly")
+        self.ativ_turma_combo.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(form, text="Título:").grid(row=1, column=0, sticky='w')
         self.ativ_titulo_entry = ttk.Entry(form)
-        self.ativ_titulo_entry.grid(row=1, column=1)
-        ttk.Label(form, text="Data Entrega:").grid(row=2, column=0)
+        self.ativ_titulo_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        ttk.Label(form, text="Data Entrega:").grid(row=2, column=0, sticky='w')
         self.ativ_data_entry = ttk.Entry(form)
-        self.ativ_data_entry.grid(row=2, column=1)
-        ttk.Button(form, text="Adicionar", command=self.adicionar_atividade).grid(row=3, columnspan=2)
+        self.ativ_data_entry.grid(row=2, column=1, padx=5, pady=5)
+        
+        HoverButton(form, text="Adicionar", command=self.adicionar_atividade).grid(row=3, columnspan=2)
 
         self.tree_atividades = ttk.Treeview(parent, columns=("ID", "Turma", "Título", "Data"), show="headings")
         self.tree_atividades.heading("ID", text="ID"); self.tree_atividades.heading("Turma", text="ID Turma"); self.tree_atividades.heading("Título", text="Título"); self.tree_atividades.heading("Data", text="Data Entrega")
@@ -889,10 +1009,11 @@ class PainelProfessor(tk.Frame):
         self.atualizar_atividades()
 
     def adicionar_atividade(self):
-        id_turma = self.ativ_id_turma_entry.get()
+        turma_selecionada = self.ativ_turma_combo.get()
         titulo = self.ativ_titulo_entry.get()
         data = self.ativ_data_entry.get()
-        if id_turma and titulo and data:
+        if turma_selecionada and titulo and data:
+            id_turma = turma_selecionada.split(' - ')[0]
             cmd = f"CADASTRAR_ATIVIDADE;{id_turma};{titulo};{data}"
             resp = self.controller.cliente.enviar_comando(cmd)
             tipo, dados = processar_resposta_servidor(resp)
@@ -902,6 +1023,13 @@ class PainelProfessor(tk.Frame):
             self.atualizar_atividades()
     
     def atualizar_atividades(self):
+        # Atualiza a combobox de turmas
+        resp_turmas = self.controller.cliente.enviar_comando("LISTAR_TURMAS")
+        tipo_turmas, turmas = processar_resposta_servidor(resp_turmas)
+        if tipo_turmas == "DADOS":
+            self.ativ_turma_combo['values'] = [f"{t[0]} - {t[1]}" for t in turmas]
+
+        # Atualiza a tabela de atividades
         self.tree_atividades.delete(*self.tree_atividades.get_children())
         resp = self.controller.cliente.enviar_comando("LISTAR_ATIVIDADES")
         tipo, atividades = processar_resposta_servidor(resp)
@@ -910,10 +1038,99 @@ class PainelProfessor(tk.Frame):
                 self.tree_atividades.insert("", "end", values=ativ)
 
     def criar_tela_notas(self, parent):
-        ttk.Button(parent, text="Lançar/Editar Notas", command=self.lancar_nota).pack(pady=10)
+        HoverButton(parent, text="Lançar/Editar Notas", command=self.lancar_nota).pack(pady=10)
     
     def lancar_nota(self):
         dialog = AddGradesDialog(self)
+
+    # --- NOVA TELA DE FREQUÊNCIA ---
+    def criar_tela_frequencia(self, parent):
+        control_frame = ttk.LabelFrame(parent, text="Controle de Frequência")
+        control_frame.pack(fill='x', padx=5, pady=5)
+        
+        ttk.Label(control_frame, text="Turma:").pack(side='left', padx=5)
+        self.freq_turma_combo = ttk.Combobox(control_frame, state="readonly")
+        self.freq_turma_combo.pack(side='left', padx=5)
+        self.freq_turma_combo.bind("<<ComboboxSelected>>", self.carregar_alunos_frequencia)
+
+        ttk.Label(control_frame, text="Data (DD/MM/AAAA):").pack(side='left', padx=5)
+        self.freq_data_entry = ttk.Entry(control_frame, width=15)
+        self.freq_data_entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
+        self.freq_data_entry.pack(side='left', padx=5)
+
+        HoverButton(control_frame, text="Salvar Frequência", command=self.salvar_frequencia).pack(side='right', padx=5)
+
+        list_frame = ttk.Frame(parent)
+        list_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        self.tree_frequencia = ttk.Treeview(list_frame, columns=("ID", "Nome", "Status"), show="headings")
+        self.tree_frequencia.heading("ID", text="ID"); self.tree_frequencia.heading("Nome", text="Nome do Aluno"); self.tree_frequencia.heading("Status", text="Status")
+        self.tree_frequencia.pack(side='left', fill='both', expand=True)
+        
+        btn_freq_frame = ttk.Frame(list_frame)
+        btn_freq_frame.pack(side='left', padx=10, fill='y')
+        HoverButton(btn_freq_frame, text="Marcar Presente", command=lambda: self.marcar_status_frequencia("Presente")).pack(pady=5)
+        HoverButton(btn_freq_frame, text="Marcar Falta", command=lambda: self.marcar_status_frequencia("Falta")).pack(pady=5)
+
+        self.atualizar_combo_turmas_frequencia()
+
+    def atualizar_combo_turmas_frequencia(self):
+        resp_turmas = self.controller.cliente.enviar_comando("LISTAR_TURMAS")
+        tipo_turmas, turmas = processar_resposta_servidor(resp_turmas)
+        if tipo_turmas == "DADOS":
+            self.freq_turma_combo['values'] = [f"{t[0]} - {t[1]}" for t in turmas]
+
+    def carregar_alunos_frequencia(self, event=None):
+        self.tree_frequencia.delete(*self.tree_frequencia.get_children())
+        turma_selecionada = self.freq_turma_combo.get()
+        if not turma_selecionada: return
+
+        id_turma = turma_selecionada.split(' - ')[0]
+        resp_alunos = self.controller.cliente.enviar_comando("LISTAR_ALUNOS")
+        tipo_alunos, alunos = processar_resposta_servidor(resp_alunos)
+        
+        if tipo_alunos == "DADOS":
+            for aluno in alunos:
+                if aluno[5] == id_turma:
+                    self.tree_frequencia.insert("", "end", values=(aluno[0], aluno[1], "Presente"))
+
+    def marcar_status_frequencia(self, status):
+        selecionados = self.tree_frequencia.selection()
+        if not selecionados:
+            messagebox.showwarning("Aviso", "Selecione um ou mais alunos na lista.")
+            return
+        for item_id in selecionados:
+            self.tree_frequencia.set(item_id, "Status", status)
+
+    def salvar_frequencia(self):
+        turma_selecionada = self.freq_turma_combo.get()
+        data = self.freq_data_entry.get()
+        if not turma_selecionada or not data:
+            messagebox.showwarning("Aviso", "Selecione uma turma e informe a data.")
+            return
+
+        id_turma = turma_selecionada.split(' - ')[0]
+        
+        frequencias = []
+        for item_id in self.tree_frequencia.get_children():
+            valores = self.tree_frequencia.item(item_id, 'values')
+            id_aluno = valores[0]
+            status_char = 'P' if valores[2] == 'Presente' else 'F'
+            frequencias.append(f"{id_aluno},{status_char}")
+
+        if not frequencias:
+            messagebox.showinfo("Informação", "Não há alunos nesta turma para registrar frequência.")
+            return
+
+        frequencias_str = "|".join(frequencias)
+        comando = f"REGISTRAR_FREQUENCIA;{id_turma};{data};{frequencias_str}"
+        
+        resp = self.controller.cliente.enviar_comando(comando)
+        tipo, dados = processar_resposta_servidor(resp)
+        if tipo == "SUCESSO":
+            messagebox.showinfo("Sucesso", dados)
+            self.log_action(f"registrou frequência para a turma {id_turma} em {data}")
+    # --- FIM NOVA TELA ---
 
     def criar_tela_mural(self, parent):
         form = ttk.LabelFrame(parent, text="Postar Aviso no Mural")
@@ -927,7 +1144,7 @@ class PainelProfessor(tk.Frame):
         self.mural_msg_entry = ttk.Entry(form, width=50)
         self.mural_msg_entry.pack(side='left', padx=5, expand=True, fill='x')
 
-        ttk.Button(form, text="Postar", command=self.postar_mensagem).pack(side='left', padx=5)
+        HoverButton(form, text="Postar", command=self.postar_mensagem).pack(side='left', padx=5)
 
     def postar_mensagem(self):
         id_turma = self.mural_id_turma_entry.get()
@@ -956,12 +1173,17 @@ class PainelAluno(tk.Frame):
         
         frame_boletim = ttk.Frame(notebook)
         frame_mural = ttk.Frame(notebook)
+        frame_financeiro_aluno = ttk.Frame(notebook) # NOVA ABA
+
         notebook.add(frame_boletim, text="Meu Boletim")
         notebook.add(frame_mural, text="Mural de Avisos")
-        tk.Button(self, text="Logout", command=lambda: self.controller.trocar_frame(TelaLogin), bg=COR_BOTAO, fg=COR_TEXTO).pack(pady=5)
+        notebook.add(frame_financeiro_aluno, text="Financeiro") # NOVA ABA
+        
+        HoverButton(self, text="Logout", command=lambda: self.controller.trocar_frame(TelaLogin)).pack(pady=5)
         
         self.criar_tela_boletim(frame_boletim)
         self.criar_tela_mural(frame_mural)
+        self.criar_tela_financeiro_aluno(frame_financeiro_aluno) # NOVA ABA
 
     def criar_tela_boletim(self, parent):
         self.tree_boletim = ttk.Treeview(parent, columns=("Materia", "NP1", "NP2", "PIM", "Média", "Status"), show="headings")
@@ -971,7 +1193,7 @@ class PainelAluno(tk.Frame):
         
         btn_frame = ttk.Frame(parent)
         btn_frame.pack(pady=5)
-        ttk.Button(btn_frame, text="Solicitar Exame", command=self.solicitar_exame).pack()
+        HoverButton(btn_frame, text="Solicitar Exame", command=self.solicitar_exame).pack()
 
         self.atualizar_boletim()
 
@@ -1048,6 +1270,27 @@ class PainelAluno(tk.Frame):
             for msg in mensagens:
                 if msg[0] == self.dados_aluno["turma_id"]:
                     self.tree_mural.insert("", "end", values=(msg[1], msg[2]))
+
+    # --- NOVA TELA FINANCEIRO ALUNO ---
+    def criar_tela_financeiro_aluno(self, parent):
+        ttk.Label(parent, text="Minhas Mensalidades").pack(pady=10)
+        self.tree_financeiro_aluno = ttk.Treeview(parent, columns=("Ano", "Mês", "Valor", "Status"), show="headings")
+        for col in ("Ano", "Mês", "Valor", "Status"): self.tree_financeiro_aluno.heading(col, text=col)
+        self.tree_financeiro_aluno.pack(fill="both", expand=True, padx=10, pady=10)
+        self.atualizar_financeiro_aluno()
+    
+    def atualizar_financeiro_aluno(self):
+        self.tree_financeiro_aluno.delete(*self.tree_financeiro_aluno.get_children())
+        id_aluno = self.dados_aluno.get('id')
+        if not id_aluno: return
+
+        resp = self.controller.cliente.enviar_comando(f"LISTAR_FINANCEIRO;{id_aluno}")
+        tipo, registros = processar_resposta_servidor(resp)
+        if tipo == "DADOS":
+            for r in registros:
+                # r[0] é o id_aluno, que não precisamos mostrar aqui
+                self.tree_financeiro_aluno.insert("", "end", values=(r[1], r[2], f"R$ {r[3]}", r[4]))
+
 
 # --- Diálogos Personalizados ---
 
@@ -1141,7 +1384,7 @@ class AddGradesDialog(simpledialog.Dialog):
         for tipo, entry in self.grades.items():
             valor = entry.get()
             if valor:
-                cmd = f"CADASTRAR_NOTA;{id_aluno};{id_materia};{tipo};{valor}"
+                cmd = f"CADASTRAR_NOTA;{id_aluno};{id_materia};{tipo};{valor.replace(',', '.')}"
                 resp = self.master.controller.cliente.enviar_comando(cmd)
                 tipo_resp, dados = processar_resposta_servidor(resp)
                 if tipo_resp != "SUCESSO":
@@ -1165,7 +1408,7 @@ class AddTurmaDialog(simpledialog.Dialog):
         return self.data_entry
 
     def popular_professores(self):
-        self.prof_combo['values'] = [u[0] for u in ler_usuarios_local() if u[2] == "Professor"]
+        self.prof_combo['values'] = [u[0] for u in ler_usuarios_local() if len(u)>2 and u[2] == "Professor"]
 
     def apply(self):
         data = self.data_entry.get()
@@ -1176,6 +1419,28 @@ class AddTurmaDialog(simpledialog.Dialog):
             messagebox.showwarning("Erro", "Todos os campos são obrigatórios.", parent=self)
             self.result = None
 
+class PerfilUsuarioDialog(tk.Toplevel):
+    def __init__(self, parent, dados_usuario):
+        super().__init__(parent)
+        self.title(f"Perfil de {dados_usuario[0]}")
+        self.geometry("350x200")
+        self.configure(bg=COR_FUNDO_FRAME)
+        self.transient(parent)
+        self.grab_set()
+
+        ttk.Label(self, text="Nome de Usuário:", font=FONTE_LABEL).pack(pady=(10,0))
+        ttk.Label(self, text=dados_usuario[0], font=FONTE_NORMAL).pack()
+
+        ttk.Label(self, text="Perfil:", font=FONTE_LABEL).pack(pady=(10,0))
+        ttk.Label(self, text=dados_usuario[2], font=FONTE_NORMAL).pack()
+
+        ttk.Label(self, text="Status:", font=FONTE_LABEL).pack(pady=(10,0))
+        status_label = ttk.Label(self, text=dados_usuario[3].capitalize(), font=FONTE_NORMAL)
+        status_label.pack()
+        status_label.config(foreground="lightgreen" if dados_usuario[3] == "ativo" else "orange")
+        
+        HoverButton(self, text="Fechar", command=self.destroy).pack(pady=20)
+
 
 if __name__ == "__main__":
     if not MATPLOTLIB_DISPONIVEL:
@@ -1183,4 +1448,3 @@ if __name__ == "__main__":
         print("Instale com: pip install matplotlib")
     app = App()
     app.mainloop()
-

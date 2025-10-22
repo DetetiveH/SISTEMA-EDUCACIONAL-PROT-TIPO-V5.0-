@@ -45,7 +45,7 @@
 
 // --- Constantes do Servidor e Arquivos ---
 #define PORTA 8080
-#define TAMANHO_BUFFER 4096
+#define TAMANHO_BUFFER 8192
 #define ARQUIVO_CURSOS "cursos.csv"
 #define ARQUIVO_MATERIAS "materias.csv"
 #define ARQUIVO_TURMAS "turmas.csv"
@@ -54,7 +54,20 @@
 #define ARQUIVO_NOTAS "notas.csv"
 #define ARQUIVO_MENSAGENS "mensagens.csv"
 #define ARQUIVO_LOG "log.csv"
+#define ARQUIVO_FREQUENCIA "frequencia.csv"
+#define ARQUIVO_FINANCEIRO "financeiro.csv"
 #define MAX_LINHA 1024
+#define MAX_ALUNOS 500
+
+// --- Estrutura para Análise de IA ---
+typedef struct {
+    int id;
+    char nome[100];
+    float soma_notas;
+    int contagem_notas;
+    int contagem_notas_baixas;
+} AlunoAnalytics;
+
 
 // --- Mutex Global para Thread Safety ---
 #ifdef _WIN32
@@ -116,6 +129,15 @@ char* listar_diario_handler(char* args);
 // --- MÓDULO DE MENSAGENS: Protótipos ---
 char* postar_mensagem_handler(char* args);
 char* listar_mensagens_handler();
+
+// --- MÓDULO DE FREQUÊNCIA: Protótipos ---
+char* registrar_frequencia_handler(char* args);
+char* listar_frequencia_handler(char* args);
+
+// --- MÓDULO FINANCEIRO: Protótipos ---
+char* gerar_mensalidades_handler(char* args);
+char* listar_financeiro_handler(char* args);
+char* pagar_mensalidade_handler(char* args);
 
 // --- MÓDULO DE SISTEMA (IA, LOG, BACKUP): Protótipos ---
 char* analisar_desempenho_ia_handler();
@@ -286,6 +308,13 @@ char* processar_comando(char* buffer) {
     else if (strcmp(comando, "LIMPAR_MENSAGENS") == 0) resposta = limpar_arquivo_handler(ARQUIVO_MENSAGENS);
     else if (strcmp(comando, "LIMPAR_LOGS") == 0) resposta = limpar_arquivo_handler(ARQUIVO_LOG);
     else if (strcmp(comando, "LISTAR_DIARIO") == 0) resposta = listar_diario_handler(args);
+    // NOVOS COMANDOS DE FREQUENCIA
+    else if (strcmp(comando, "REGISTRAR_FREQUENCIA") == 0) resposta = registrar_frequencia_handler(args);
+    else if (strcmp(comando, "LISTAR_FREQUENCIA") == 0) resposta = listar_frequencia_handler(args);
+    // NOVOS COMANDOS FINANCEIROS
+    else if (strcmp(comando, "GERAR_MENSALIDADES") == 0) resposta = gerar_mensalidades_handler(args);
+    else if (strcmp(comando, "LISTAR_FINANCEIRO") == 0) resposta = listar_financeiro_handler(args);
+    else if (strcmp(comando, "PAGAR_MENSALIDADE") == 0) resposta = pagar_mensalidade_handler(args);
     else {
         resposta = malloc(100);
         sprintf(resposta, "ERRO;Comando '%s' nao reconhecido.", comando);
@@ -666,7 +695,7 @@ char* cadastrar_aluno_handler(char* args) {
             fprintf(arquivo, "%d;%s;%d;%s;%s;%d\n", id_aluno, nome, idade, matricula, email, id_turma);
             fclose(arquivo);
             
-            sprintf(resposta, "SUCESSO;Aluno '%s' cadastrado com ID: %d.", nome, id_aluno);
+            sprintf(resposta, "SUCESSO;%s;Aluno '%s' cadastrado com ID: %d.", matricula, nome, id_aluno);
         }
     }
     
@@ -1194,7 +1223,11 @@ char* backup_handler() {
     char timestamp[40];
     sprintf(timestamp, "%d%02d%02d_%02d%02d%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-    const char* arquivos[] = {ARQUIVO_CURSOS, ARQUIVO_MATERIAS, ARQUIVO_TURMAS, ARQUIVO_ALUNOS, ARQUIVO_ATIVIDADES, ARQUIVO_NOTAS, ARQUIVO_MENSAGENS, ARQUIVO_LOG};
+    const char* arquivos[] = {
+        ARQUIVO_CURSOS, ARQUIVO_MATERIAS, ARQUIVO_TURMAS, ARQUIVO_ALUNOS, 
+        ARQUIVO_ATIVIDADES, ARQUIVO_NOTAS, ARQUIVO_MENSAGENS, ARQUIVO_LOG,
+        ARQUIVO_FREQUENCIA, ARQUIVO_FINANCEIRO
+    };
     int num_arquivos = sizeof(arquivos) / sizeof(arquivos[0]);
 
     for (int i = 0; i < num_arquivos; i++) {
@@ -1260,36 +1293,86 @@ char* analisar_desempenho_ia_handler() {
 #else
     pthread_mutex_lock(&g_file_mutex);
 #endif
-    FILE* arq_notas = fopen(ARQUIVO_NOTAS, "r");
-    if (arq_notas == NULL) {
+    
+    AlunoAnalytics alunos[MAX_ALUNOS];
+    int num_alunos = 0;
+    FILE* arq_alunos = fopen(ARQUIVO_ALUNOS, "r");
+    if (arq_alunos != NULL) {
+        char linha[MAX_LINHA];
+        while(fgets(linha, sizeof(linha), arq_alunos) && num_alunos < MAX_ALUNOS) {
+            sscanf(linha, "%d;%99[^;];", &alunos[num_alunos].id, alunos[num_alunos].nome);
+            alunos[num_alunos].soma_notas = 0;
+            alunos[num_alunos].contagem_notas = 0;
+            alunos[num_alunos].contagem_notas_baixas = 0;
+            num_alunos++;
+        }
+        fclose(arq_alunos);
+    } else {
 #ifdef _WIN32
         LeaveCriticalSection(&g_file_mutex);
 #else
         pthread_mutex_unlock(&g_file_mutex);
 #endif
         char* resp = malloc(100);
-        strcpy(resp, "ERRO;Arquivo de notas nao encontrado para analise.");
+        strcpy(resp, "ERRO;Arquivo de alunos nao encontrado.");
         return resp;
     }
 
-    char* resposta = malloc(TAMANHO_BUFFER);
+    FILE* arq_notas = fopen(ARQUIVO_NOTAS, "r");
+    if (arq_notas != NULL) {
+        char linha[MAX_LINHA];
+        while(fgets(linha, sizeof(linha), arq_notas)) {
+            int id_aluno;
+            float nota;
+            if(sscanf(linha, "%d;%*d;%*[^;];%f", &id_aluno, &nota) == 2) {
+                for (int i = 0; i < num_alunos; i++) {
+                    if (alunos[i].id == id_aluno) {
+                        alunos[i].soma_notas += nota;
+                        alunos[i].contagem_notas++;
+                        if (nota < 5.0) {
+                            alunos[i].contagem_notas_baixas++;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        fclose(arq_notas);
+    }
+
+    char* resposta = malloc(TAMANHO_BUFFER * 2);
     strcpy(resposta, "IA_RESULTADO;");
-    char linha[MAX_LINHA];
     int encontrou_risco = 0;
 
-    while(fgets(linha, sizeof(linha), arq_notas)) {
-        int id_aluno;
-        float nota;
-        if(sscanf(linha, "%d;%*d;%*[^;];%f", &id_aluno, &nota) == 2) {
-            if (nota < 5.0) {
-                char aluno_em_risco[20];
-                sprintf(aluno_em_risco, "%d,", id_aluno);
-                strcat(resposta, aluno_em_risco);
+    for (int i = 0; i < num_alunos; i++) {
+        if (alunos[i].contagem_notas > 0) {
+            float media = alunos[i].soma_notas / alunos[i].contagem_notas;
+            int score = 0;
+            char justificativa[200] = "";
+
+            if (media < 7.0) score += (7.0 - media) * 10;
+            score += alunos[i].contagem_notas_baixas * 20;
+
+            if (score > 0) {
+                char* nivel_risco;
+                if (score >= 40) {
+                    nivel_risco = "Alto";
+                    sprintf(justificativa, "Media %.1f e %d nota(s) insuficiente(s).", media, alunos[i].contagem_notas_baixas);
+                } else if (score >= 20) {
+                    nivel_risco = "Medio";
+                     sprintf(justificativa, "Media %.1f ou %d nota(s) insuficiente(s).", media, alunos[i].contagem_notas_baixas);
+                } else {
+                    nivel_risco = "Baixo";
+                     sprintf(justificativa, "Media %.1f, porem proxima do limite.", media);
+                }
+
+                char linha_resp[512];
+                sprintf(linha_resp, "%d,%s,%s,%s|", alunos[i].id, alunos[i].nome, nivel_risco, justificativa);
+                strcat(resposta, linha_resp);
                 encontrou_risco = 1;
             }
         }
     }
-    fclose(arq_notas);
     
 #ifdef _WIN32
     LeaveCriticalSection(&g_file_mutex);
@@ -1303,6 +1386,246 @@ char* analisar_desempenho_ia_handler() {
         strcat(resposta, "NENHUM");
     }
 
+    return resposta;
+}
+
+
+// --- NOVAS FUNÇÕES: GESTÃO DE FREQUÊNCIA ---
+char* registrar_frequencia_handler(char* args) {
+    char* resposta = malloc(256);
+#ifdef _WIN32
+    EnterCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_lock(&g_file_mutex);
+#endif
+
+    FILE* arquivo = fopen(ARQUIVO_FREQUENCIA, "a");
+    if (arquivo == NULL) {
+        sprintf(resposta, "ERRO;Nao foi possivel abrir o arquivo de frequencia.");
+    } else {
+        // Formato esperado: id_turma;data;id_aluno1,status1|id_aluno2,status2...
+        char* saveptr;
+        int id_turma;
+        char data[20];
+        
+        id_turma = atoi(strtok_r(args, ";", &saveptr));
+        strcpy(data, strtok_r(NULL, ";", &saveptr));
+        char* frequencias = strtok_r(NULL, "", &saveptr);
+        
+        char* freq_saveptr;
+        char* token = strtok_r(frequencias, "|", &freq_saveptr);
+        while (token != NULL) {
+            int id_aluno;
+            char status;
+            sscanf(token, "%d,%c", &id_aluno, &status);
+            fprintf(arquivo, "%d;%d;%s;%c\n", id_turma, id_aluno, data, status);
+            token = strtok_r(NULL, "|", &freq_saveptr);
+        }
+        fclose(arquivo);
+        sprintf(resposta, "SUCESSO;Frequencia para a turma %d na data %s registrada.", id_turma, data);
+    }
+#ifdef _WIN32
+    LeaveCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_unlock(&g_file_mutex);
+#endif
+    return resposta;
+}
+
+char* listar_frequencia_handler(char* args) {
+#ifdef _WIN32
+    EnterCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_lock(&g_file_mutex);
+#endif
+
+    FILE* arquivo = fopen(ARQUIVO_FREQUENCIA, "r");
+     if (arquivo == NULL) {
+#ifdef _WIN32
+        LeaveCriticalSection(&g_file_mutex);
+#else
+        pthread_mutex_unlock(&g_file_mutex);
+#endif
+        char* resp = malloc(50);
+        strcpy(resp, "VAZIO;Nenhuma frequencia registrada.");
+        return resp;
+    }
+
+    char* resposta = malloc(TAMANHO_BUFFER * 5);
+    strcpy(resposta, "DADOS;");
+    char linha[MAX_LINHA];
+    while (fgets(linha, sizeof(linha), arquivo)) {
+        linha[strcspn(linha, "\n")] = 0;
+        strcat(resposta, linha);
+        strcat(resposta, "|");
+    }
+    fclose(arquivo);
+
+#ifdef _WIN32
+    LeaveCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_unlock(&g_file_mutex);
+#endif
+    
+    if (strlen(resposta) > 6) {
+        resposta[strlen(resposta) - 1] = '\0';
+    }
+    return resposta;
+}
+
+
+// --- NOVAS FUNÇÕES: MÓDULO FINANCEIRO ---
+char* gerar_mensalidades_handler(char* args) {
+    float valor;
+    if (sscanf(args, "%f", &valor) != 1) {
+        char* resp = malloc(100);
+        strcpy(resp, "ERRO;Valor da mensalidade invalido.");
+        return resp;
+    }
+#ifdef _WIN32
+    EnterCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_lock(&g_file_mutex);
+#endif
+    
+    char* resposta = malloc(256);
+    FILE* arq_alunos = fopen(ARQUIVO_ALUNOS, "r");
+    FILE* arq_financeiro = fopen(ARQUIVO_FINANCEIRO, "a");
+
+    if (arq_alunos == NULL || arq_financeiro == NULL) {
+        sprintf(resposta, "ERRO;Falha ao abrir arquivos de alunos ou financeiro.");
+    } else {
+        time_t t = time(NULL);
+        struct tm *tm_info = localtime(&t);
+        int ano = tm_info->tm_year + 1900;
+        int mes = tm_info->tm_mon + 1;
+        
+        char linha[MAX_LINHA];
+        int count = 0;
+        while(fgets(linha, sizeof(linha), arq_alunos)) {
+            int id_aluno;
+            sscanf(linha, "%d;", &id_aluno);
+            fprintf(arq_financeiro, "%d;%d;%d;%.2f;Pendente\n", id_aluno, ano, mes, valor);
+            count++;
+        }
+        fclose(arq_alunos);
+        fclose(arq_financeiro);
+        sprintf(resposta, "SUCESSO;Mensalidades de %d/%d geradas para %d aluno(s).", mes, ano, count);
+    }
+    
+#ifdef _WIN32
+    LeaveCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_unlock(&g_file_mutex);
+#endif
+    return resposta;
+}
+
+char* listar_financeiro_handler(char* args) {
+#ifdef _WIN32
+    EnterCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_lock(&g_file_mutex);
+#endif
+    
+    FILE* arquivo = fopen(ARQUIVO_FINANCEIRO, "r");
+    if (arquivo == NULL) {
+#ifdef _WIN32
+        LeaveCriticalSection(&g_file_mutex);
+#else
+        pthread_mutex_unlock(&g_file_mutex);
+#endif
+        char* resp = malloc(50);
+        strcpy(resp, "VAZIO;Nenhum registro financeiro.");
+        return resp;
+    }
+
+    char* resposta = malloc(TAMANHO_BUFFER * 5);
+    strcpy(resposta, "DADOS;");
+    char linha[MAX_LINHA];
+
+    int id_filtro = -1;
+    if (strcmp(args, "TODOS") != 0) {
+        id_filtro = atoi(args);
+    }
+
+    while(fgets(linha, sizeof(linha), arquivo)) {
+        int id_aluno_atual;
+        sscanf(linha, "%d;", &id_aluno_atual);
+        
+        if(id_filtro == -1 || id_aluno_atual == id_filtro) {
+            linha[strcspn(linha, "\n")] = 0;
+            strcat(resposta, linha);
+            strcat(resposta, "|");
+        }
+    }
+    fclose(arquivo);
+
+#ifdef _WIN32
+    LeaveCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_unlock(&g_file_mutex);
+#endif
+
+    if (strlen(resposta) > 6) {
+        resposta[strlen(resposta) - 1] = '\0';
+    }
+    return resposta;
+}
+
+char* pagar_mensalidade_handler(char* args) {
+    int id_aluno, ano, mes;
+    if (sscanf(args, "%d;%d;%d", &id_aluno, &ano, &mes) != 3) {
+        char* resp = malloc(100);
+        strcpy(resp, "ERRO;Argumentos invalidos para pagar mensalidade.");
+        return resp;
+    }
+#ifdef _WIN32
+    EnterCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_lock(&g_file_mutex);
+#endif
+
+    char* resposta = malloc(256);
+    FILE* original = fopen(ARQUIVO_FINANCEIRO, "r");
+    FILE* temp = fopen("temp_financeiro.csv", "w");
+    
+    if (!original || !temp) {
+        sprintf(resposta, "ERRO;Falha ao abrir arquivos temporarios.");
+    } else {
+        char linha[MAX_LINHA];
+        int encontrado = 0;
+        while(fgets(linha, sizeof(linha), original)) {
+            int id_a, a, m;
+            float v;
+            char s[20];
+            sscanf(linha, "%d;%d;%d;%f;%s", &id_a, &a, &m, &v, s);
+
+            if (id_a == id_aluno && a == ano && m == mes) {
+                fprintf(temp, "%d;%d;%d;%.2f;Pago\n", id_a, a, m, v);
+                encontrado = 1;
+            } else {
+                fputs(linha, temp);
+            }
+        }
+        fclose(original);
+        fclose(temp);
+
+        remove(ARQUIVO_FINANCEIRO);
+        rename("temp_financeiro.csv", ARQUIVO_FINANCEIRO);
+
+        if (encontrado) {
+            sprintf(resposta, "SUCESSO;Mensalidade de %d/%d para o aluno %d marcada como paga.", mes, ano, id_aluno);
+        } else {
+            sprintf(resposta, "ERRO;Registro financeiro nao encontrado.");
+        }
+    }
+
+#ifdef _WIN32
+    LeaveCriticalSection(&g_file_mutex);
+#else
+    pthread_mutex_unlock(&g_file_mutex);
+#endif
     return resposta;
 }
 
@@ -1354,7 +1677,8 @@ int verificar_materias_no_curso(int id_curso_busca) {
     char linha[MAX_LINHA];
     while (fgets(linha, sizeof(linha), arquivo)) {
         int id_curso;
-        if (sscanf(linha, "%*d;%*[^;];%d;%*[^;];%*s", &id_curso) == 2) { 
+        // Corrigido sscanf para o formato correto
+        if (sscanf(linha, "%*d;%*[^;];%d;", &id_curso) == 1) { 
             if (id_curso == id_curso_busca) {
                 fclose(arquivo);
                 return 1;
@@ -1364,4 +1688,3 @@ int verificar_materias_no_curso(int id_curso_busca) {
     fclose(arquivo);
     return 0;
 }
-
